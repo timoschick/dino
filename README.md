@@ -41,7 +41,7 @@ and ``<N>`` is the number of examples to generate per label and input text.
 
 To generate a dataset for a task, you need to provide a file containing a *task specification*, containing (among other things) the instructions given to the pretrained language model. A task specification is a single JSON object that looks like this:
 
-```json
+```
 {
   "task_name": "<TASK_NAME>",
   "labels": {
@@ -59,7 +59,7 @@ To generate a dataset for a task, you need to provide a file containing a *task 
   }
 }
 ```
-Here, ``<TASK_NAME>`` is the name for the task and ``<LABEL_1>``, ..., ``<LABEL_n>`` are the task's labels. For each label ``<LABEL_i>``, ``<INSTRUCTION_i>`` is the instruction provided to the language model for generating examples with label `<LABEL_i>` (see [Writing Instructions](writing-instructions)). You can additionally specify a list of counter labels ``<COUNTER_LABELS_n>`` for each label. This tells the model to generate outputs that are not only likely given the current label, but also unlikely given all counter labels (see [the paper](https://arxiv.org/abs/2104.07540) for details).
+Here, ``<TASK_NAME>`` is the name for the task and ``<LABEL_1>``, ..., ``<LABEL_n>`` are the task's labels. For each label ``<LABEL_i>``, ``<INSTRUCTION_i>`` is the instruction provided to the language model for generating examples with label `<LABEL_i>` (see [Writing Instructions](#writing-instructions)). You can additionally specify a list of counter labels ``<COUNTER_LABELS_n>`` for each label. This tells the model to generate outputs that are not only likely given the current label, but also unlikely given all counter labels (see [the paper](https://arxiv.org/abs/2104.07540) for details).
 
 #### Examples
 
