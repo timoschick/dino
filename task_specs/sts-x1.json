@@ -1,0 +1,17 @@
+{
+  "task_name": "sts-x1",
+  "labels": {
+    "2": {
+      "instruction": "Task: Write two sentences that mean the same thing.\nSentence 1: \"",
+      "counter_labels": []
+    },
+    "1": {
+      "instruction": "Task: Write two sentences that are somewhat similar.\nSentence 1: \"",
+      "counter_labels": []
+    },
+    "0": {
+      "instruction": "Task: Write two sentences that are on completely different topics.\nSentence 1: \"",
+      "counter_labels": []
+    }
+  }
+}
