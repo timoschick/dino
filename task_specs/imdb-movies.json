@@ -1,0 +1,13 @@
+{
+  "task_name": "imdb",
+  "labels": {
+    "0": {
+      "instruction": "Task: Write a review for a bad movie.\nMovie: \"",
+      "counter_labels": []
+    },
+    "1": {
+      "instruction": "Task: Write a review for a good movie.\nMovie: \"",
+      "counter_labels": []
+    }
+  }
+}
