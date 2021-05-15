@@ -1,6 +1,24 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+This module contains the core classes used by DINO.
+"""
+
+import math
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Union
 
+import openai
 import torch
 from tqdm import tqdm
 from transformers import GPT2Tokenizer, PreTrainedTokenizer, PreTrainedModel
@@ -16,12 +34,15 @@ class DinoGenerator:
     This class represents a generative language model which can be used to generate datasets from instructions.
     """
 
-    def __init__(self, model: 'ModelWrapper', task_spec: Dict[str, Any], max_output_length: int = 40, decay_constant: float = 100,
-                 top_p: float = 0.9, top_k: int = 5, remove_duplicates: bool = True, remove_identical_pairs: bool = False,
-                 min_num_words: int = -1, keep_outputs_without_eos: bool = False, allow_newlines_in_outputs: bool = False):
+    def __init__(self, task_spec: Dict[str, Any], model: Union['str', 'ModelWrapper'] = None, openai_api_key: Optional[str] = None,
+                 max_output_length: int = 40, decay_constant: float = 100, top_p: float = 0.9, top_k: int = 5,
+                 remove_duplicates: bool = True, remove_identical_pairs: bool = False, min_num_words: int = -1, min_num_tokens: int = -1,
+                 keep_outputs_without_eos: bool = False, allow_newlines_in_outputs: bool = False):
         """
-        :param model: a wrapper around the underlying language model
         :param task_spec: the task specification
+        :param model: a wrapper around the underlying language model.
+               If GPT-3 is used, this should instead be the name of the GPT-3 model (e.g., "davinci")
+        :param openai_api_key: an optional API key for GPT-3. If given, GPT-3 is used as a language model
         :param max_output_length: the maximum output length for each generated text
         :param decay_constant: the decay constant for self-debiasing
         :param top_p: p value for top-p sampling (set to 0 to perform no top-p sampling)
@@ -29,12 +50,14 @@ class DinoGenerator:
         :param remove_duplicates: whether duplicates should be removed from the generated dataset
         :param remove_identical_pairs: whether text pairs with identical texts should be removed (only for text pair datasets)
         :param min_num_words: the minimum number of (whitespace-separated) words for each dataset entry
+        :param min_num_tokens: the minimum number of tokens for each dataset entry
         :param keep_outputs_without_eos: if set to true, examples where the language model does not output a quotation mark (which is
                interpreted as a signal that it has completed its output) are not removed from the dataset.
         :param allow_newlines_in_outputs: if set to true, model outputs that contain a newline character before the end-of-sequence token
                (a quotation mark) are not removed from the dataset
         """
         self.model = model
+        self.openai_api_key = openai_api_key
         self.max_output_length = max_output_length
         self.decay_constant = decay_constant
         self.top_p = top_p
@@ -42,28 +65,30 @@ class DinoGenerator:
         self.remove_duplicates = remove_duplicates
         self.remove_identical_pairs = remove_identical_pairs
         self.min_num_words = min_num_words
+        self.min_num_tokens = min_num_tokens
         self.keep_outputs_without_eos = keep_outputs_without_eos
         self.allow_newlines_in_outputs = allow_newlines_in_outputs
 
         self.labels = list(task_spec['labels'].keys())
         self.instructions = {label: task_spec['labels'][label]['instruction'] for label in self.labels}
-        self.counter_labels = {label: task_spec['labels'][label]['counter_labels'] for label in self.labels}
+        self.counter_labels = {label: task_spec['labels'][label].get('counter_labels', []) for label in self.labels}
 
     def generate_dataset(self, input_texts: Optional[List[str]], num_entries_per_input_and_label: Optional[int] = None,
-                         num_entries_per_label: Optional[int] = None) -> List[DatasetEntry]:
+                         num_entries_per_label: Optional[int] = None, batch_size: Optional[int] = None) -> List[DatasetEntry]:
         """
         Generate a new dataset.
         :param input_texts: an optional list of raw texts; this is required for generating text pair datasets
         :param num_entries_per_input_and_label: the number of entries to generate for each pair of input text and label
         :param num_entries_per_label: the number of entries to generate for each label
+        :param batch_size: the number of entries to generate simultaneously
         :return: the generated dataset
         """
 
         generate_with_inputs = input_texts is not None
 
         if not generate_with_inputs:
-            input_texts = list(range(num_entries_per_label))
-            num_entries_per_input_and_label = 1
+            input_texts = list(range(math.ceil(num_entries_per_label / batch_size)))
+            num_entries_per_input_and_label = batch_size
 
         input_iterator = tqdm(input_texts, desc="Dataset Entries")
         dataset = []
@@ -80,14 +105,27 @@ class DinoGenerator:
                                   generate_with_inputs: bool) -> List[DatasetEntry]:
 
         instruction = self._build_instruction(label, input_text_or_id, generate_with_inputs)
-        counter_instructions = [
-            self._build_instruction(other_label, input_text_or_id, generate_with_inputs) for other_label in self.counter_labels[label]
-        ]
 
-        model_outputs = self.model.generate_self_debiasing(
-            input_text=instruction, debiasing_texts=counter_instructions, num_samples=num_entries, decay_constant=self.decay_constant,
-            do_sample=True, min_length=self.max_output_length, max_length=self.max_output_length, top_k=self.top_k, top_p=self.top_p
-        )
+        if self.openai_api_key is not None:
+            try:
+                model_responses = [openai.Completion.create(
+                    engine=self.model, prompt=instruction, max_tokens=self.max_output_length, top_p=self.top_p, stop=['"']
+                ) for _ in range(num_entries)]
+
+                model_outputs = [model_response["choices"][0]["text"] for model_response in model_responses]
+
+            except openai.error.RateLimitError as e:
+                print(e)
+                return []
+
+        else:
+            counter_instructions = [
+                self._build_instruction(other_label, input_text_or_id, generate_with_inputs) for other_label in self.counter_labels[label]
+            ]
+            model_outputs = self.model.generate_self_debiasing(
+                input_text=instruction, debiasing_texts=counter_instructions, num_samples=num_entries, decay_constant=self.decay_constant,
+                do_sample=True, min_length=self.max_output_length, max_length=self.max_output_length, top_k=self.top_k, top_p=self.top_p
+            )
 
         model_outputs = [
             self._process_output(input_text=input_text_or_id, output_text=output, label=label, generate_with_inputs=generate_with_inputs)
@@ -128,6 +166,12 @@ class DinoGenerator:
                 dataset = [entry for entry in dataset if len(entry.text_b.split()) >= self.min_num_words]
             else:
                 dataset = [entry for entry in dataset if len(entry.text_a.split()) >= self.min_num_words]
+
+        if self.min_num_tokens > 0:
+            if generate_with_inputs:
+                dataset = [entry for entry in dataset if len(self.model._tokenizer.tokenize(entry.text_b)) >= self.min_num_tokens]
+            else:
+                dataset = [entry for entry in dataset if len(self.model._tokenizer.tokenize(entry.text_a)) >= self.min_num_tokens]
 
         if generate_with_inputs and self.remove_identical_pairs:
             dataset = [entry for entry in dataset if entry.text_a != entry.text_b]

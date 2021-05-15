@@ -1,3 +1,19 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+This script can be used to generate datasets with DINO (Datasets from Instructions).
+"""
+
 import argparse
 import json
 import os
@@ -14,9 +30,12 @@ def validate_args(args) -> None:
     if args.input_file is not None:
         assert args.num_entries_per_input_and_label is not None, "If 'input_file' is set, 'num_entries_per_input_and_label' must be set"
         assert args.num_entries_per_label is None, "If 'input_file' is set, 'num_entries_per_label' must not be set"
+        assert args.batch_size is None, "If 'input_file' is set, batch_size must not be set as 'num_entries_per_input_and_label' also " \
+                                        "serves as batch size in this case"
     else:
         assert args.num_entries_per_input_and_label is None, "If 'input_file' is not set, 'num_entries_per_input_and_label' must not be set"
         assert args.num_entries_per_label is not None, "If 'input_file' is not set, 'num_entries_per_label' must be set"
+        assert args.batch_size is not None, "If 'input_file' is not set, 'batch_size' must be set"
 
 
 def validate_task_spec(task_spec: Dict[str, Any], with_inputs: bool) -> None:
@@ -30,10 +49,10 @@ def validate_task_spec(task_spec: Dict[str, Any], with_inputs: bool) -> None:
     all_labels = task_spec['labels'].keys()
     for label, label_dict in task_spec['labels'].items():
         assert isinstance(label_dict, dict), f"{error_prefix} label '{label}' is not mapped to a dictionary"
+        assert not label_dict.keys() - {'instruction', 'counter_labels'}, \
+            f"{error_prefix} invalid keys for label '{label}', only 'instruction' and 'counter_labels' are allowed"
         assert 'instruction' in label_dict.keys(), f"{error_prefix} missing field 'instruction' for label '{label}'"
-        assert 'counter_labels' in label_dict.keys(), f"{error_prefix} missing field 'counter_labels' for label '{label}'"
         assert isinstance(label_dict['instruction'], str), f"{error_prefix} 'instruction' not a string for label '{label}'"
-        assert isinstance(label_dict['counter_labels'], list), f"{error_prefix} 'counter_labels' not a list for label '{label}'"
         assert label_dict['instruction'][-1] == '"', \
             f"{error_prefix} each instruction should end with an opening quotation mark (\") so that the next quotation mark generated " \
             f"by the model can be interpreted as a signal that it is done."
@@ -46,8 +65,10 @@ def validate_task_spec(task_spec: Dict[str, Any], with_inputs: bool) -> None:
             assert label_dict['instruction'].count(PLACEHOLDER_STR) == 0, \
                 f"{error_prefix} The instruction for label '{label}' contains a placeholder token ({PLACEHOLDER_STR}). If no input file " \
                 f"is specified, instructions must not contain this placeholder as there is no input to replace it with."
-        for counter_label in label_dict['counter_labels']:
-            assert counter_label in all_labels, f"{error_prefix} counter_label '{counter_label}' for label '{label}' is not a label"
+        if 'counter_labels' in label_dict.keys():
+            assert isinstance(label_dict['counter_labels'], list), f"{error_prefix} 'counter_labels' not a list for label '{label}'"
+            for counter_label in label_dict['counter_labels']:
+                assert counter_label in all_labels, f"{error_prefix} counter_label '{counter_label}' for label '{label}' is not a label"
 
 
 if __name__ == '__main__':
@@ -63,6 +84,7 @@ if __name__ == '__main__':
     # Text generation and sampling parameters
     parser.add_argument("--model_name", type=str, default="gpt2-xl",
                         help="The pretrained model to use for dataset generation. Currently, only variants of GPT2 are supported.")
+    parser.add_argument("--openai_api_key", type=str, default=None)
     parser.add_argument("--max_output_length", type=int, default=40,
                         help="The maximum output length for each generated text.")
     parser.add_argument("--decay_constant", type=float, default=100,
@@ -82,6 +104,8 @@ if __name__ == '__main__':
                         help="The number of entries to generate for each pair of input text and label (only if --input_file is set)")
     parser.add_argument("--num_entries_per_label", type=int, default=None,
                         help="The number of entries to generate for each label (only if --input_file is not set)")
+    parser.add_argument("--batch_size", type=int, default=None,
+                        help="The batch size for generation (only if --input_file is not set)")
     parser.add_argument("--remove_duplicates", action='store_true',
                         help="Whether duplicates should be removed from the generated dataset")
     parser.add_argument("--remove_identical_pairs", action='store_true',
@@ -95,6 +119,8 @@ if __name__ == '__main__':
     parser.add_argument("--min_num_words", type=int, default=-1,
                         help="The minimum number of (whitespace-separated) words for each dataset entry. Entries with fewer words are "
                              "removed.")
+    parser.add_argument("--min_num_tokens", type=int, default=-1,
+                        help="The minimum number of tokens for each dataset entry. Entries with fewer tokens are removed.")
 
     # Miscellaneous further parameters
     parser.add_argument("--no_cuda", action='store_true')
@@ -118,19 +144,22 @@ if __name__ == '__main__':
     with open(args_file, 'w', encoding='utf8') as fh:
         fh.write(json.dumps(vars(args), indent=4))
 
-    wrapper = GPT2Wrapper(model_name=args.model_name, use_cuda=not args.no_cuda)
     inputs = read_inputs(args.input_file, args.input_file_type) if args.input_file else None
 
+    if args.openai_api_key:
+        print(f"Using OpenAI's GPT3 ({args.model_name}) as generator. The following parameters are ignored: ['decay_constant', 'top_k']")
+
+    model = GPT2Wrapper(model_name=args.model_name, use_cuda=not args.no_cuda) if not args.openai_api_key else args.model_name
     generator = DinoGenerator(
-        model=wrapper, task_spec=task_specification, max_output_length=args.max_output_length, decay_constant=args.decay_constant,
-        top_p=args.top_p, top_k=args.top_k, remove_duplicates=args.remove_duplicates, remove_identical_pairs=args.remove_identical_pairs,
-        min_num_words=args.min_num_words, keep_outputs_without_eos=args.keep_outputs_without_eos,
-        allow_newlines_in_outputs=args.allow_newlines_in_outputs
+        task_spec=task_specification, model=model, openai_api_key=args.openai_api_key, max_output_length=args.max_output_length,
+        decay_constant=args.decay_constant, top_p=args.top_p, top_k=args.top_k, remove_duplicates=args.remove_duplicates,
+        remove_identical_pairs=args.remove_identical_pairs, min_num_words=args.min_num_words, min_num_tokens=args.min_num_tokens,
+        keep_outputs_without_eos=args.keep_outputs_without_eos, allow_newlines_in_outputs=args.allow_newlines_in_outputs
     )
 
     print("Starting dataset generation with DINO...")
     outputs = generator.generate_dataset(inputs, num_entries_per_input_and_label=args.num_entries_per_input_and_label,
-                                         num_entries_per_label=args.num_entries_per_label)
+                                         num_entries_per_label=args.num_entries_per_label, batch_size=args.batch_size)
 
     print(f"Dataset generation complete, dataset contains {len(outputs)} entries")
     dataset_path = os.path.join(args.output_dir, f'{task_specification["task_name"]}-dataset.jsonl')
