@@ -14,7 +14,8 @@ To generate datasets for (single) text classification, you can use D<small>INO</
 python3 dino.py \
  --output_dir <OUTPUT_DIR> \
  --task_file <TASK_FILE> \
- --num_entries_per_label <N>
+ --num_entries_per_label <N> \
+ --batch_size 1
 ````
 where ``<OUTPUT_DIR>`` is a directory to which the generated dataset is written, ``<TASK_FILE>`` is a JSON file containing a *task specification* (see [Task Specs](#-task-specs)), and ``<N>`` is the number of examples to generate per label. To get an overview of additional parameters, run ``python3 dino.py --help``.
 
