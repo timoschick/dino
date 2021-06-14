@@ -8,14 +8,14 @@
     "0.5": {
       "instruction": "Task: Write two sentences that are somewhat similar.\nSentence 1: \"<X1>\"\nSentence 2: \"",
       "counter_labels": [
-        "2"
+        "1"
       ]
     },
     "0": {
       "instruction": "Task: Write two sentences that are on completely different topics.\nSentence 1: \"<X1>\"\nSentence 2: \"",
       "counter_labels": [
-        "2",
-        "1"
+        "1",
+        "0.5"
       ]
     }
   }
