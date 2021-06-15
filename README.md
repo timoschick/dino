@@ -92,7 +92,14 @@ Sentence 2: "
 
 ## 🦕 Generated D<small>INO</small>s
 
-In this section, we will soon make publicly available a list of datasets that we have generated using D<small>INO</small>.
+This section lists datasets that we have generated using D<small>INO</small>.
+
+| Dataset | Description | Link |
+| :------ | :---------- | :--- |
+| STS&#8209;🦕&#8209;x<sub>2</sub>&nbsp;(pp) | A postprocessed version of STS-🦕-x<sub>2</sub>. Postprocessing includes label smoothing, data augmentation and selecting at most two x<sub>2</sub>'s for each (x<sub>1</sub>, y) and is performed <a href="https://github.com/timoschick/dino/blob/fce28bc331fd07887c5e1a41d9ad781c4a9e207b/scripts/sts/postprocess_dataset.py">using this script</a>. | [📥&nbsp;Download](https://www.cis.uni-muenchen.de/~schickt/dino/sts-dino-x2-postprocessed.jsonl) |
+| STS&#8209;🦕&#8209;x<sub>1</sub>x<sub>2</sub>&nbsp;(pp)   | A postprocessed version of STS-🦕-x<sub>1</sub>x<sub>2</sub>. Postprocessing includes label smoothing, data augmentation and selecting at most two x<sub>2</sub>'s for each (x<sub>1</sub>, y) and is performed <a href="https://github.com/timoschick/dino/blob/fce28bc331fd07887c5e1a41d9ad781c4a9e207b/scripts/sts/postprocess_dataset.py">using this script</a>. | [📥&nbsp;Download](https://www.cis.uni-muenchen.de/~schickt/dino/sts-dino-x1x2-postprocessed.jsonl) |
+| STS&#8209;🦕&#8209;x<sub>2</sub>&nbsp;(raw) | A semantic textual similarity dataset generated with DINO, where the first text for each pair (x<sub>1</sub>, x<sub>2</sub>) is from the STS benchmark. For almost all use cases, you probably want to use the postprocessed (pp) version of this dataset. | [📥&nbsp;Download](https://www.cis.uni-muenchen.de/~schickt/dino/sts-dino-x2.jsonl) |
+| STS&#8209;🦕&#8209;x<sub>1</sub>x<sub>2</sub>&nbsp;(raw) | A semantic textual similarity dataset generated with DINO, where each pair (x<sub>1</sub>, x<sub>2</sub>) is generated from scratch. For almost all use cases, you probably want to use the postprocessed (pp) version of this dataset. | [📥&nbsp;Download](https://www.cis.uni-muenchen.de/~schickt/dino/sts-dino-x1x2.jsonl) |
 
 ## 📕 Citation
 
