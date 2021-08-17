@@ -272,7 +272,7 @@ class GPT2Wrapper(ModelWrapper):
         if min_length is not None:
             min_length = min_length + input_length
         if max_length is not None:
-            max_length = max_length + input_length
+            max_length = min(self.model._model.config.max_position_embeddings, max_length + input_length)
 
         output_ids = self._model.generate(**inputs, min_length=min_length, max_length=max_length, **kwargs)
 
